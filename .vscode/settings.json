@@ -1,0 +1,11 @@
+{
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.view.pdf.viewer": "tab",
+  "latex-workshop.latex.clean.fileTypes": [
+    "*.aux", "*.bbl", "*.blg", "*.fls",
+    "*.fdb_latexmk", "*.synctex.gz", "*.log"
+  ],
+  "latex-workshop.latex.recipe.default": "latexmk (lualatex)",
+  "editor.wordWrap": "on",
+  "files.autoSave": "onFocusChange"
+}
