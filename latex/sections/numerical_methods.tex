@@ -1,0 +1,30 @@
+\section{Chebyshev Spectral Collocation Method}
+
+\subsection{Chebyshev Polynomials and Collocation Points}
+% TODO: Chebyshev-Gauss-Lobatto points: x_j = cos(j*pi/N), j = 0,...,N
+% TODO: Mapping from [-1,1] to physical domain [0,L]
+% TODO: Node clustering near boundaries (density ~ 1/sqrt(1-x^2))
+
+\subsection{Differentiation Matrices}
+% TODO: Construction of the (N+1) x (N+1) first-derivative matrix D_N
+% TODO: Second-derivative matrix D_N^2 = D_N * D_N
+% TODO: Explicit formulas for D_N entries
+% TODO: Spectral accuracy: exponential convergence for analytic functions
+
+\subsection{Spatial Discretization of the McNabb-Foster System}
+% TODO: Replace d^2c_m/dx^2 with D_N^2 * c_m (vector of nodal values)
+% TODO: Semi-discrete ODE system: dc/dt = A*c + f(c,T(t))
+% TODO: Boundary condition incorporation via row replacement in D_N^2
+% TODO: Coupling between c_m and c_{t,i} equations at each collocation point
+
+\subsection{Time Integration}
+% TODO: Stiffness from Arrhenius kinetics requires implicit methods
+% TODO: BDF methods via scipy.integrate.solve_ivp (method='BDF')
+% TODO: Jacobian structure: block-diagonal + diffusion band
+% TODO: Adaptive time-stepping for temperature ramps and BC transitions
+
+\subsection{Convergence Properties}
+% TODO: Exponential (spectral) convergence for smooth solutions
+% TODO: Algebraic convergence for solutions with limited regularity
+% TODO: Comparison with FEM h-refinement (algebraic) rates
+% TODO: Effect of boundary layers on achievable accuracy vs. N

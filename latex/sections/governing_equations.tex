@@ -1,0 +1,30 @@
+\section{Governing Equations}
+
+\subsection{McNabb-Foster Model}
+% TODO: Present the coupled PDE system for mobile hydrogen c_m and trapped hydrogen c_{t,i}:
+%   dc_m/dt = D(T) * d^2 c_m / dx^2 + S(x,t) - sum_i [nu_m,i * c_m * (n_i - c_{t,i}) - nu_r,i * c_{t,i}]
+%   dc_{t,i}/dt = nu_m,i * c_m * (n_i - c_{t,i}) - nu_r,i * c_{t,i}
+% TODO: Define all variables: D diffusivity, S source term, nu_m trapping rate,
+%       nu_r detrapping rate, n_i trap density
+
+\subsection{Arrhenius Temperature Dependence}
+% TODO: D(T) = D_0 exp(-E_D / k_B T)
+% TODO: Trapping rate: nu_m(T) = nu_m,0 exp(-E_m / k_B T)
+% TODO: Detrapping rate: nu_r(T) = nu_r,0 exp(-E_r / k_B T)
+% TODO: Discuss the stiffness introduced by exponential temperature sensitivity
+
+\subsection{Boundary and Initial Conditions}
+% TODO: Dirichlet BCs (c_m = 0 for TDS, Sieverts' law for GDP)
+% TODO: Initial conditions for each experiment type
+% TODO: Temperature profiles: constant, linear ramp (TDS), step changes (GDP)
+
+\subsection{TDS Configuration}
+% TODO: Three-stage experiment: implantation, resting, desorption
+% TODO: Source term (Gaussian implantation flux)
+% TODO: Temperature ramp during desorption phase
+% TODO: Derived quantity: desorption flux from surface
+
+\subsection{Gas-Driven Permeation Configuration}
+% TODO: Upstream Sieverts' BC with pressure P, downstream c_m = 0
+% TODO: Multi-temperature protocol: 400C -> evacuate -> 500C -> evacuate -> 600C
+% TODO: Why divergence occurs: D(600C) >> D(400C), steep boundary layer at reintroduction

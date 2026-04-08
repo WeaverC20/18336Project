@@ -1,6 +1,6 @@
 MAIN = main
 TEX = pdflatex
-BIB = biber
+BIB = bibtex
 
 .PHONY: pdf clean watch
 
