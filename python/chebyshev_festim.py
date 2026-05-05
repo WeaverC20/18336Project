@@ -782,7 +782,11 @@ class HydrogenTransportProblem:
             if next_ms_idx < len(milestones):
                 dt = min(dt, milestones[next_ms_idx] - self.t)
             dt = min(dt, t_final - self.t)
-            if dt <= 0:
+            # Treat FP-tiny remainders as done. Without this, accumulated
+            # floating-point drift in self.t after >~1000 fixed-cap steps
+            # leaves the loop alive with dt in the 1e-13 range, where
+            # Newton on the (1/dt)-scaled mass diagonal cannot converge.
+            if dt <= 1e-12 * max(t_final, 1.0):
                 break
 
             t_new = self.t + dt
