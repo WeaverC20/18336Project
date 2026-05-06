@@ -1,30 +1,89 @@
-\section{Results}
+\section{Results}\label{sec:results}
 
-\subsection{Convergence Verification}
-% TODO: Manufactured solution test for spatial operator accuracy
-% TODO: Error vs. N (number of Chebyshev nodes): expect exponential decay
-% TODO: Comparison: FEM h-convergence (algebraic) vs. spectral p-convergence (exponential)
+All benchmarks are run in Python on a single core (Apple M-series), with NumPy/SciPy for the Chebyshev solver and FEniCSx for FESTIM. The Chebyshev implementation mirrors FESTIM's public API class-for-class, so the two solvers differ only in the spatial discretization. For FESTIM, we report the Newton-solve-only wall time (the accumulated cost of the Newton iterations across all backward Euler steps) rather than the total \texttt{run()} time, because profiling shows that roughly 60\% of FESTIM's per-step overhead is consumed by FFCx JIT cache directory scans during \texttt{SurfaceFlux} post-processing, which is independent of mesh resolution. Error is measured as the relative $L^2$ norm on a common observation time grid, $\|J_\text{test} - J_\text{ref}\|_2 / \|J_\text{ref}\|_2$.
 
-\subsection{TDS Simulation}
-% TODO: Reproduce FESTIM TDS benchmark (tungsten, 3 traps)
-% TODO: Desorption flux comparison plots (Chebyshev vs. FESTIM)
-% TODO: Trap contribution breakdown
-% TODO: Error analysis against fine-mesh FESTIM reference
+\subsection{Constant-temperature permeation}\label{sec:perm-results}
 
-\subsection{Gas-Driven Permeation Simulation}
-% TODO: Single-temperature GDP validation at 400C
-% TODO: Multi-temperature protocol: 400C -> 500C -> 600C
-% TODO: Demonstrate Chebyshev solver stability where FESTIM diverges
-% TODO: Permeation flux vs. time comparison
+The simplest benchmark is isothermal gas-driven permeation through a $L = \SI{3e-4}{\meter}$ foil at $T = \SI{500}{\kelvin}$, with no trapping and an analytical Crank series reference~\eqref{eq:crank}. Both solvers use the same backward Euler controller with $\Delta t_{\max} = \SI{0.05}{\second}$ (2000 steps over $t \in [0, 100]$~s), so any difference in relative $L^2$ error above the temporal floor is purely spatial.
 
-\subsection{Performance Analysis}
-% TODO: Wall-clock time vs. number of spatial DOF
-% TODO: Time-to-solution for equivalent accuracy
-% TODO: Scaling with number of collocation points / mesh elements
-% TODO: Memory usage comparison
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_spectral_vs_algebraic.pdf}
+  \caption{Left: relative $L^2$ error vs.\ analytical as a function of spatial DOFs. The Chebyshev curve drops geometrically from $N+1 = 5$ to $N+1 = 9$, then saturates at the backward Euler temporal floor ($\sim 9.4\times 10^{-4}$). The FESTIM P1 curve follows a slope-$(-2)$ algebraic trend. Right: wall time vs.\ error (Pareto frontier). At a matched-accuracy target of $2\times 10^{-3}$, Chebyshev requires $N+1 = 7$ nodes in \SI{0.18}{\second}, while FESTIM needs 10 cells (11 vertices) in \SI{16.6}{\second} Newton-only time.}
+  \label{fig:perm-headline}
+\end{figure}
 
-\subsection{Error Analysis}
-% TODO: Spatial discretization error convergence rates
-% TODO: Temporal error from BDF integrator
-% TODO: Sensitivity to number of Chebyshev nodes N
-% TODO: Effect of trap count on computational cost
+Figure~\ref{fig:perm-headline} presents the convergence headline. On the left panel, the Chebyshev error decreases geometrically from a relative $L^2$ of $1.3\times 10^{-2}$ at $N+1 = 5$ to $9.7\times 10^{-4}$ at $N+1 = 9$, where it saturates at the backward Euler temporal floor. The FESTIM P1 curve follows the expected $O(h^2)$ algebraic trend, reaching the same floor at approximately 25 cells. On the right panel, the Chebyshev points cluster in the lower-left corner: all polynomial degrees from $N+1 = 5$ to $N+1 = 49$ solve in under \SI{0.3}{\second}, while FESTIM's Newton-only cost ranges from \SI{13.6}{\second} to \SI{19.6}{\second}. The observation that both methods saturate at the same floor confirms that it is a property of the shared backward Euler time integrator at $\Delta t = \SI{0.05}{\second}$, not of either spatial discretization. We verify this by comparing two Chebyshev solutions at $N+1 = 49$ with $\Delta t = 0.05$ and $\Delta t = 0.025$: the relative $L^2$ difference is $4.7\times 10^{-4}$, consistent with the first-order temporal convergence of backward Euler.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_error_decomposition.pdf}
+  \caption{Error decomposition. Left (Panel A): spatial-only error isolated by measuring both methods against a high-resolution Chebyshev BE solve at the same $\Delta t$, so the shared temporal error cancels. Chebyshev converges geometrically; FESTIM P1, P2, and P3 follow slopes $-2$, $-3$, and $-4$ respectively. Right (Panel B): Richardson extrapolation in time drops the temporal floor by a factor of $\sim 5$.}
+  \label{fig:perm-decomp}
+\end{figure}
+
+To isolate the spatial discretization error from the temporal floor, Figure~\ref{fig:perm-decomp} (Panel A) replaces the analytical reference with a high-resolution Chebyshev BE solve at the same $\Delta t$. Since test and reference share the same time integrator, the temporal error cancels, revealing the pure spatial convergence of each method. The Chebyshev curve falls geometrically until it reaches a cross-solver noise floor at approximately $10^{-5}$. FESTIM P1, P2, and P3 follow their expected algebraic slopes of $-2$, $-3$, and $-4$. Panel B shows that Richardson extrapolation in time ($u_\text{Rich} = 2u(\Delta t/2) - u(\Delta t)$) cancels the leading $O(\Delta t)$ backward Euler term, dropping the temporal floor to approximately $2\times 10^{-4}$.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_bdf_comparison.pdf}
+  \caption{Effect of the time integrator. Replacing backward Euler with a variable-order BDF integrator on the Chebyshev side drops the temporal floor from $9.4\times 10^{-4}$ to $1.9\times 10^{-4}$, with Chebyshev reaching this new floor at $N+1 = 13$ in \SI{0.06}{\second}. FESTIM is backward-Euler-only out of the box.}
+  \label{fig:perm-bdf}
+\end{figure}
+
+Figure~\ref{fig:perm-bdf} demonstrates the potential of higher-order time integration. Swapping backward Euler for SciPy's variable-order BDF integrator on the Chebyshev side drops the temporal floor from $9.4\times 10^{-4}$ to $1.9\times 10^{-4}$, and the Chebyshev solver reaches this new floor at $N+1 = 13$ in \SI{0.06}{\second}. This comparison is asymmetric by design, since FESTIM does not expose a higher-order time integrator through its public API, but that asymmetry is precisely the point: it shows what the spectral spatial error looks like once the temporal scheme is no longer the limiting factor. This is a central finding of the permeation benchmark, and it applies to both methods equally: any effort to improve the accuracy of hydrogen transport simulations beyond the $\sim 10^{-3}$ level must address the time integration, regardless of the spatial discretization.
+
+\subsection{Multi-temperature gas-driven permeation}\label{sec:gdp-results}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_timelag_schedules.pdf}
+  \caption{Temperature and pressure schedules for the three multi-temperature GDP protocols ($k = 1, 2, 3$). The $k = 3$ schedule reaches \SI{400}{\kelvin} and spans approximately 409 hours of simulated time.}
+  \label{fig:gdp-sched}
+\end{figure}
+
+Figure~\ref{fig:gdp-sched} shows the three temperature--pressure cycling protocols. Since no analytical solution exists, we construct a reference by running the Chebyshev solver at $N+1 = 65$ with $\Delta t_{\max} = 12.5$~s. A same-$\Delta t$ reference at $N+1 = 65$ with $\Delta t_{\max} = 200$~s isolates the pure spatial error by temporal cancellation. Both methods are swept at $\Delta t_{\max} = 200$~s: Chebyshev at $N+1 \in \{9, 13, 17, 25, 33\}$ and FESTIM P1 at $n_\text{cells} \in \{25, 50, 75, 100, 150\}$ on a graded mesh. A relative $L^2$ above 0.2 is flagged as silent divergence.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\textwidth]{../figs/permeation_timelag_k3.pdf}
+  \caption{Convergence and efficiency for the severe $k=3$ schedule ($700 \to 400 \to 700$~K). Left: relative $L^2$ error vs.\ DOFs (bold = spatial-only, dashed = total). Right: Newton-only wall time vs.\ total error. FESTIM P1 configurations silently diverge (red crosses), while all Chebyshev configurations converge.}
+  \label{fig:gdp-k3}
+\end{figure}
+
+For the mild $k = 1$ schedule, both methods converge monotonically, with Chebyshev's spatial-only error falling geometrically and FESTIM following an approximately $O(h^2)$ algebraic trend, much like the constant-temperature case. For the severe $k = 3$ schedule, however, the situation changes qualitatively. As shown in Figure~\ref{fig:gdp-k3}, FESTIM's Newton solver fails on several mesh configurations, either explicitly (runtime errors) or silently (relative $L^2$ error above the 0.2 quality gate). The Chebyshev solver, by contrast, converges on all tested configurations for all three schedules.
+
+This robustness advantage has a clear physical explanation. When the Sieverts boundary condition is reapplied at a higher temperature after a bake phase, both $K_S(T)\sqrt{P}$ and $D(T)$ jump sharply, producing a steep boundary layer near $x = 0$. On a P1 mesh, the boundary layer may span fewer cells than the Newton solver needs to converge, and the iteration either diverges outright or produces a solution that is too smooth to be physically meaningful. The CGL node clustering, however, places $O(N/\pi)$ nodes near each endpoint, providing the resolution the Newton solver needs without requiring a proportionally large total DOF count. For the timelag method, where the solver must complete all temperature segments to produce a valid measurement, this robustness is not a convenience but a requirement for the analysis to proceed at all.
+
+\subsection{TDS forward convergence and inverse problem}\label{sec:tds-results}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.8\textwidth]{../figs/tds_mesh_source.pdf}
+  \caption{Multi-domain mesh strategy for TDS. The Gaussian source (grey fill, log-$x$ scale) has a FWHM of \SI{5.9}{\nano\meter} inside a \SI{20}{\micro\meter} domain. Chebyshev nodes ($N+1 = 49$, three blocks at 30~nm / 3~$\mu$m / $L$) and FESTIM graded vertices ($\sim$700 total) are shown.}
+  \label{fig:tds-mesh}
+\end{figure}
+
+To handle the four-order-of-magnitude scale separation between the source width and the domain length, both solvers use a three-block decomposition on the breakpoints $[0, \SI{30}{\nano\meter}, \SI{3}{\micro\meter}, L]$, as shown in Figure~\ref{fig:tds-mesh}. The Chebyshev solver splits its polynomial budget $2:3:2$ across the blocks (Section~\ref{sec:multidomain}); FESTIM uses a graded mesh with approximately 200/300/200 vertices in the three regions at scale 1.0.
+
+Since no analytical solution exists, we construct a spectrally-converged reference at $N+1 = 193$. The self-consistency check between $N+1 = 193$ and $N+1 = 129$ yields a relative $L^2$ difference of $1.3\times 10^{-3}$, an order of magnitude below our $10^{-2}$ target, so the reference is treated as Richardson-grade truth.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/tds_convergence.pdf}
+  \caption{TDS forward convergence. Left: relative $L^2$ error vs.\ DOFs. Chebyshev converges geometrically; FESTIM P1 follows slope $\approx -2$. Right: wall time vs.\ error. At the $10^{-2}$ target, Chebyshev lands at $N+1 = 49$ (\SI{0.73}{\second}), FESTIM at scale 0.05 ($\sim$33 vertices, \SI{5.81}{\second} Newton-only) --- a per-call speedup of $\sim 8\times$.}
+  \label{fig:tds-conv}
+\end{figure}
+
+Figure~\ref{fig:tds-conv} shows the convergence study. The Chebyshev error decreases geometrically from $9.9\times 10^{-1}$ at $N+1 = 9$ to $1.3\times 10^{-3}$ at $N+1 = 129$. FESTIM P1 converges algebraically at slope $\approx -2$. At the $10^{-2}$ target, the smallest qualifying Chebyshev configuration is $N+1 = 49$ at \SI{0.73}{\second}, while the smallest qualifying FESTIM configuration is mesh scale 0.05 ($\sim$33 vertices) at \SI{5.81}{\second} Newton-only.
+
+For the inverse problem, we generate synthetic TDS data by evaluating the Chebyshev forward solver at $N+1 = 193$ and adding $2\%$ Gaussian noise, representative of realistic TDS measurement uncertainty. A Levenberg--Marquardt optimizer \cite{levenberg1944,marquardt1963} recovers the four trap parameters $(n_1, n_2, E_{p,1}, E_{p,2})$ from the noisy spectrum. Both methods use their matched-accuracy meshes: Chebyshev at $N+1 = 49$ and FESTIM at scale 0.05.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{../figs/tds_lm_trajectory.pdf}
+  \caption{LM convergence trajectory. Parameter error vs.\ cumulative forward-solve time. Both methods converge in 35 evaluations. Chebyshev completes in \SI{24}{\second}; FESTIM requires \SI{229}{\second} Newton-only --- a $9.5\times$ speedup.}
+  \label{fig:tds-lm}
+\end{figure}
+
+Figure~\ref{fig:tds-lm} plots the LM convergence trajectory: the relative parameter error $\|(\theta_k - \theta_\text{true})/\theta_\text{true}\|_2$ as a function of the cumulative forward-solve wall time. Both methods converge in 35 forward evaluations and recover the true parameters to within the noise floor, which is expected given that the $2\%$ measurement noise dominates the forward-model error at both matched-accuracy meshes. However, the Chebyshev curve sits consistently to the left of the FESTIM curve, reaching any given parameter accuracy with a smaller simulation budget. The cumulative simulation times are \SI{24.0}{\second} for Chebyshev (full wall) and \SI{229.1}{\second} for FESTIM (Newton-only), a $9.5\times$ speedup that compounds over the optimization loop. Because TDS analysis pipelines routinely run hundreds to thousands of such inversions for parametric studies, Bayesian uncertainty quantification, or fitting across sample databases, this per-loop speedup transfers directly into a proportional reduction in the total analysis wall time.

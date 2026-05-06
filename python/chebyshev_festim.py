@@ -361,6 +361,162 @@ class ChebyshevMesh1D:
         return float(np.dot(w, f_arr * abs_dx_dxi))
 
 
+class MultiDomainChebyshevMesh1D:
+    """
+    Multi-domain (spectral-element-style) Chebyshev-Gauss-Lobatto mesh on
+    [breaks[0], breaks[-1]] composed of ``len(Ns)`` subdomains stitched at
+    shared interface nodes.
+
+    Each block ``k`` carries its own Chebyshev-Lobatto grid with ``Ns[k]+1``
+    nodes on ``[breaks[k], breaks[k+1]]`` (no per-block stretching). Adjacent
+    blocks share their interface node, so the global mesh has
+    ``sum(Ns[k]+1) - (n_blocks - 1) = sum(Ns) + 1`` unique nodes -- the
+    polynomial degree across blocks behaves like a single global ``N`` such
+    that ``n_nodes = N + 1``.
+
+    The first- and second-derivative matrices are assembled block-by-block
+    so that block-interior rows carry that block's local Chebyshev
+    derivatives directly. Interface rows are special: they will be replaced
+    by a *flux-continuity* equation when the solver assembles the residual
+    (this is the standard strong-form spectral-element treatment of an
+    interface for a smooth-coefficient diffusion problem). The mesh exposes
+    the flux operator via ``iface_indices`` and ``iface_flux_op`` so the
+    solver can do the override without knowing the block layout.
+
+    The same C^0-continuity-with-shared-nodes pattern is what FESTIM's
+    graded P1 mesh enforces between vertex blocks; this mesh is the
+    pseudospectral analogue.
+
+    Parameters
+    ----------
+    breaks : sequence of float
+        Strictly increasing block boundaries. ``len(breaks) == len(Ns)+1``.
+    Ns : sequence of int
+        Per-block polynomial degrees; block ``k`` has ``Ns[k]+1`` nodes.
+    """
+
+    def __init__(self, breaks, Ns):
+        breaks = [float(b) for b in breaks]
+        Ns = [int(n) for n in Ns]
+        if len(breaks) != len(Ns) + 1:
+            raise ValueError("breaks must have len(Ns) + 1 entries.")
+        if any(breaks[i] >= breaks[i + 1] for i in range(len(Ns))):
+            raise ValueError("breaks must be strictly increasing.")
+        if any(n < 1 for n in Ns):
+            raise ValueError("each block degree Ns[k] must be >= 1.")
+
+        self.breaks = breaks
+        self.Ns = Ns
+        self.n_blocks = len(Ns)
+        self.x_min = breaks[0]
+        self.x_max = breaks[-1]
+        # API parity with ChebyshevMesh1D (single-domain unstretched).
+        self.left_stretch = 0.0
+        self.N = sum(Ns)  # global degree: n_nodes = N + 1
+
+        # Per-block local nodes and operators on [breaks[k], breaks[k+1]].
+        block_xs = []
+        block_Ds = []
+        block_D2s = []
+        for k, Nk in enumerate(Ns):
+            a, b = breaks[k], breaks[k + 1]
+            D_xi, xi = cheb_diff_matrix(Nk)
+            # xi descends from 1 (j=0) to -1 (j=Nk); s = (1-xi)/2 ascends 0..1.
+            # x = a + (b-a) s ascends a..b. dx/dxi = -(b-a)/2.
+            s = (1.0 - xi) / 2.0
+            x_block = a + (b - a) * s
+            D_phys = (-2.0 / (b - a)) * D_xi
+            D2_phys = D_phys @ D_phys
+            block_xs.append(x_block)
+            block_Ds.append(D_phys)
+            block_D2s.append(D2_phys)
+
+        # Global indexing: block k spans global indices offsets[k]..offsets[k]+Nk.
+        # The right-end node of block k is the same global DOF as the left-end
+        # node of block k+1, so offsets[k+1] = offsets[k] + Ns[k].
+        offsets = [0]
+        for k in range(self.n_blocks):
+            offsets.append(offsets[-1] + Ns[k])
+        self._offsets = offsets
+        n_total = offsets[-1] + 1
+
+        # Concatenate node positions, dropping the duplicated first entry of
+        # every block past the first.
+        x_global = [block_xs[0]]
+        for k in range(1, self.n_blocks):
+            x_global.append(block_xs[k][1:])
+        self.x = np.concatenate(x_global)
+        self.vertices = self.x  # FESTIM-compatible alias
+
+        # Assemble global D and D2. Block-interior rows take the block's own
+        # Chebyshev derivative rows; shared interface rows are zeroed here
+        # because the solver will overwrite them with the flux-continuity
+        # equation built below in ``iface_flux_op``. (Mixing the two sides'
+        # second-derivative rows by averaging is mathematically tempting but
+        # blows up the Jacobian conditioning when adjacent blocks have very
+        # different widths -- the smaller block's row scales as 1/h^2 and
+        # swamps the larger block's contributions.)
+        D_global = np.zeros((n_total, n_total))
+        D2_global = np.zeros((n_total, n_total))
+        for k in range(self.n_blocks):
+            i0 = offsets[k]
+            Nk = Ns[k]
+            for i_loc in range(Nk + 1):
+                g_row = i0 + i_loc
+                is_left_iface = (i_loc == 0) and (k > 0)
+                is_right_iface = (i_loc == Nk) and (k < self.n_blocks - 1)
+                if is_left_iface or is_right_iface:
+                    continue
+                D_global[g_row, i0:i0 + Nk + 1] = block_Ds[k][i_loc, :]
+                D2_global[g_row, i0:i0 + Nk + 1] = block_D2s[k][i_loc, :]
+
+        self.D = D_global
+        self.D2 = D2_global
+
+        # Interface flux-continuity rows. For the shared node g between
+        # block k-1 and block k, the strong-form interface equation is
+        #     (D u/dx)|_{x_g, left}  =  (D u/dx)|_{x_g, right},
+        # which, with the same diffusivity on both sides, reduces to
+        #     D_block[k-1][end, :] @ u_left  =  D_block[k][0, :] @ u_right.
+        # We pack this as a single global row in iface_flux_op so the solver
+        # can overwrite the mobile-row residual at index g without needing
+        # to know the block decomposition. ``iface_indices`` is the list of
+        # global node indices that are interface nodes.
+        self.iface_indices = []
+        self.iface_flux_op = np.zeros((n_total, n_total))
+        for k in range(1, self.n_blocks):
+            g = offsets[k]
+            Nkm1 = Ns[k - 1]
+            Nk = Ns[k]
+            cols_left = slice(offsets[k - 1], offsets[k] + 1)
+            cols_right = slice(offsets[k], offsets[k] + Nk + 1)
+            self.iface_flux_op[g, cols_left] += block_Ds[k - 1][Nkm1, :]
+            self.iface_flux_op[g, cols_right] -= block_Ds[k][0, :]
+            self.iface_indices.append(g)
+
+    @property
+    def n_nodes(self) -> int:
+        return len(self.x)
+
+    def integrate(self, f: np.ndarray) -> float:
+        """
+        Sum of Clenshaw-Curtis quadrature over each block. Shared interface
+        nodes contribute once per side with each side's local CC weight and
+        Jacobian -- the two contributions correctly cover the small
+        neighbourhood of the interface from both directions.
+        """
+        f = np.asarray(f)
+        total = 0.0
+        for k, Nk in enumerate(self.Ns):
+            i0 = self._offsets[k]
+            i1 = i0 + Nk + 1
+            f_block = f[i0:i1]
+            w = _clenshaw_curtis_weights(Nk)
+            a, b = self.breaks[k], self.breaks[k + 1]
+            total += 0.5 * (b - a) * float(np.dot(w, f_block))
+        return total
+
+
 def _clenshaw_curtis_weights(N: int) -> np.ndarray:
     """Clenshaw-Curtis quadrature weights on [-1,1] for N+1 Lobatto nodes."""
     if N == 0:
@@ -620,6 +776,22 @@ class HydrogenTransportProblem:
             sl = slice((i + 1) * N, (i + 2) * N)
             diag_tt = 1.0 / dt + nu_m[i] * c_m + nu_r[i]
             J[sl, sl] = np.diag(diag_tt)
+
+        # ---- multi-domain interface flux-continuity overwrite ----
+        # Replace the mobile-row residual/Jacobian at every shared interface
+        # node with the strong-form flux-balance equation
+        # ``D_block_left[end, :] @ u  -  D_block_right[0, :] @ u = 0`` so the
+        # solution stays C^1 across blocks. The trap rows at interface nodes
+        # are untouched: traps are local ODEs, the standard backward-Euler
+        # update at row N+g still applies. Single-domain meshes set
+        # ``iface_indices = []`` (or don't define it), so this is a no-op.
+        iface_indices = getattr(self.mesh, "iface_indices", None)
+        if iface_indices:
+            iface_op = self.mesh.iface_flux_op
+            for g in iface_indices:
+                F[g] = float(iface_op[g, :] @ c_m)
+                J[g, :] = 0.0
+                J[g, 0:N] = iface_op[g, :]
 
         # ---- BC overwrite (mobile only, Dirichlet) ----
         if self.left_bc is not None:

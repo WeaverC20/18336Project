@@ -1,6 +1,5 @@
-\section{Conclusion}
-% TODO: Summarize key findings (accuracy, performance, stability)
-% TODO: Quantify speedup factors achieved over FESTIM
-% TODO: Limitations: 1D only, smooth solutions assumed, single material
-% TODO: Future work: multi-material interfaces, 2D/3D via tensor products,
-%       integration with FESTIM as alternative spatial backend
+\section{Conclusion}\label{sec:conclusion}
+
+We have developed a Chebyshev pseudospectral collocation solver for the one-dimensional McNabb--Foster hydrogen transport equations and benchmarked it against FESTIM on three problems spanning two common experimental configurations in fusion materials characterization. On constant-temperature permeation with an analytical reference, the Chebyshev solver reaches a matched-accuracy target of $2\times 10^{-3}$ with 7 collocation nodes in \SI{0.18}{\second}, compared to 11 FESTIM P1 vertices in \SI{16.6}{\second} Newton-only time. On multi-temperature GDP, the Chebyshev solver converges on all configurations including the severe $k = 3$ protocol where FESTIM's Newton solver diverges at deep temperature steps. On TDS with a Levenberg--Marquardt inverse problem, the Chebyshev forward solver achieves a $9.5\times$ cumulative speedup inside the optimization loop (\SI{24}{\second} vs.\ \SI{229}{\second}).
+
+However, if the benefits of Chebyshev collocation are to be fully realized within FESTIM's broader ecosystem, the time integration must be upgraded. Backward Euler's first-order temporal error sets a floor that neither spatial method can penetrate, and this floor dominates the total error budget at the moderate resolutions where the spectral advantage is most pronounced. Higher-order implicit methods --- variable-order BDF, implicit Runge--Kutta, or exponential integrators --- would lower this floor and allow the geometric spatial convergence to express itself over a wider range of accuracies. The Chebyshev spatial operator, which produces dense but small differentiation matrices, is well suited to coupling with such methods. Extending the solver to multiple dimensions via tensor-product or spectral-element formulations, and integrating it with FESTIM as an alternative spatial backend, are natural directions that could bring these benefits to the broader fusion materials modeling community.

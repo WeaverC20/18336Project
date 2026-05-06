@@ -1,0 +1,27 @@
+\section{Gas-Driven Permeation}\label{sec:gdp}
+
+\subsection{Configuration}\label{sec:gdp-config}
+
+We consider a multi-temperature GDP experiment through a $L = \SI{1}{\milli\meter}$ tungsten foil with two traps ($n_1 = 1.3\times10^{-3}$, $n_2 = 4\times10^{-4}$), cycling the temperature downward in \SI{100}{\kelvin} steps from \SI{700}{\kelvin} and back up. Each temperature segment consists of a constant-pressure run at $P = \SI{1e5}{\pascal}$ followed by a sinusoidal ramp to $P = 0$ over \SI{20}{\minute} (a bake phase that evacuates mobile hydrogen before the next temperature step). We consider three schedules of increasing severity: $k=1$ ($700 \to 600 \to 700$~K), $k=2$ ($700 \to 600 \to 500 \to 600 \to 700$~K), and $k=3$ ($700 \to 600 \to 500 \to 400 \to 500 \to 600 \to 700$~K). The $k=3$ schedule, which reaches \SI{400}{\kelvin} where $D(T)$ is roughly $10^3$ times smaller than at \SI{700}{\kelvin}, is known to cause FESTIM's Newton solver to diverge when the pressure boundary condition is reintroduced at higher temperatures after bake phases. The timelag method, which extracts material transport parameters from the transient shape of the permeation curve at each temperature, depends on the solver being able to complete all segments of the cycling protocol; solver divergence at any stage invalidates the entire analysis.
+
+\subsection{Results}\label{sec:gdp-results}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_timelag_schedules.pdf}
+  \caption{Temperature and pressure schedules for the three multi-temperature GDP protocols ($k = 1, 2, 3$). The $k = 3$ schedule reaches \SI{400}{\kelvin} and spans approximately 409 hours of simulated time.}
+  \label{fig:gdp-sched}
+\end{figure}
+
+Figure~\ref{fig:gdp-sched} shows the three temperature--pressure cycling protocols. Since no analytical solution exists, we construct a reference by running the Chebyshev solver at $N+1 = 65$ with $\Delta t_{\max} = 12.5$~s. A same-$\Delta t$ reference at $N+1 = 65$ with $\Delta t_{\max} = 200$~s isolates the pure spatial error by temporal cancellation. Both methods are swept at $\Delta t_{\max} = 200$~s: Chebyshev at $N+1 \in \{9, 13, 17, 25, 33\}$ and FESTIM P1 at $n_\text{cells} \in \{25, 50, 75, 100, 150\}$ on a graded mesh. A relative $L^2$ above 0.2 is flagged as silent divergence.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.9\textwidth]{../figs/permeation_timelag_k3.pdf}
+  \caption{Convergence and efficiency for the severe $k=3$ schedule ($700 \to 400 \to 700$~K). Left: relative $L^2$ error vs.\ DOFs (bold = spatial-only, dashed = total). Right: Newton-only wall time vs.\ total error. FESTIM P1 configurations silently diverge (red crosses), while all Chebyshev configurations converge.}
+  \label{fig:gdp-k3}
+\end{figure}
+
+For the mild $k = 1$ schedule, Chebyshev's spatial-only error falls geometrically with $N$, while FESTIM's error plateaus at a structural offset that is largely independent of mesh density. The flat FESTIM error likely originates from the one-sided gradient extraction used by FESTIM's \texttt{SurfaceFlux} post-processing or from discretization artifacts in the reaction coupling. FESTIM's Newton-only wall time is also roughly constant across the tested mesh range (25--150 cells), because at these small DOF counts the actual linear algebra is negligible and the accumulated per-call PETSc solver overhead dominates. For the severe $k = 3$ schedule, however, the situation changes qualitatively. As shown in Figure~\ref{fig:gdp-k3}, FESTIM's Newton solver fails on several mesh configurations, either explicitly (runtime errors) or silently (relative $L^2$ error above the 0.2 quality gate). The Chebyshev solver, by contrast, converges on all tested configurations for all three schedules.
+
+This robustness advantage has a clear physical explanation. When the Sieverts boundary condition is reapplied at a higher temperature after a bake phase, both $K_S(T)\sqrt{P}$ and $D(T)$ jump sharply, producing a steep boundary layer near $x = 0$. On a P1 mesh, the boundary layer may span fewer cells than the Newton solver needs to converge, and the iteration either diverges outright or produces a solution that is too smooth to be physically meaningful. The CGL node clustering, however, places $O(N/\pi)$ nodes near each endpoint, providing the resolution the Newton solver needs without requiring a proportionally large total DOF count. For the timelag method, where the solver must complete all temperature segments to produce a valid measurement, this robustness is not a convenience but a requirement for the analysis to proceed at all.

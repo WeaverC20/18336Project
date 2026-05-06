@@ -11,7 +11,16 @@
 
 \maketitle
 
-\input{sections/proposal}
+\begin{abstract}
+We develop a Chebyshev pseudospectral collocation solver for the McNabb--Foster hydrogen transport equations and benchmark it against FESTIM, a FEniCS-based finite element code, on three problems: constant-temperature permeation with an analytical reference, multi-temperature gas-driven permeation where FESTIM's Newton solver diverges, and thermo-desorption spectroscopy with a Levenberg--Marquardt inverse problem. The Chebyshev solver achieves geometric spatial convergence, delivers matched-accuracy solutions with $8$--$10\times$ speedups, and maintains convergence in stiff regimes where the finite element solver fails. We find that backward Euler's first-order temporal error is the binding constraint on accuracy at moderate resolution, and that higher-order time integration is needed to unlock the full potential of spectral spatial discretization.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/governing_equations}
+\input{sections/numerical_methods}
+\input{sections/gdp}
+\input{sections/tds}
+\input{sections/conclusion}
 
 \bibliographystyle{siamplain}
 \bibliography{references}

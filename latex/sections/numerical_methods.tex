@@ -1,30 +1,68 @@
-\section{Chebyshev Spectral Collocation Method}
+\section{Chebyshev Spectral Collocation Method}\label{sec:methods}
 
-\subsection{Chebyshev Polynomials and Collocation Points}
-% TODO: Chebyshev-Gauss-Lobatto points: x_j = cos(j*pi/N), j = 0,...,N
-% TODO: Mapping from [-1,1] to physical domain [0,L]
-% TODO: Node clustering near boundaries (density ~ 1/sqrt(1-x^2))
+\subsection{Chebyshev polynomials and collocation points}
 
-\subsection{Differentiation Matrices}
-% TODO: Construction of the (N+1) x (N+1) first-derivative matrix D_N
-% TODO: Second-derivative matrix D_N^2 = D_N * D_N
-% TODO: Explicit formulas for D_N entries
-% TODO: Spectral accuracy: exponential convergence for analytic functions
+The Chebyshev polynomials $T_n(x) = \cos(n\,\cos^{-1} x)$ form an orthogonal basis on $[-1,1]$ with respect to the weight $(1 - x^2)^{-1/2}$. The Chebyshev--Gauss--Lobatto (CGL) nodes are the extrema of $T_N(x)$ together with the endpoints,
+\begin{equation}\label{eq:cgl}
+  x_j = \cos\!\left(\frac{j\pi}{N}\right), \qquad j = 0, 1, \ldots, N,
+\end{equation}
+which cluster near $x = \pm 1$ with a minimum spacing of $O(N^{-2})$ at the boundaries and a maximum spacing of $O(N^{-1})$ in the interior \cite{trefethen2000}. This boundary clustering is a natural fit for hydrogen transport problems, where the steepest concentration gradients occur at the material surfaces. To map from the reference interval $[-1,1]$ to a physical domain $[0,L]$, we apply the affine transformation $\hat{x} = L(1 - x)/2$, which maps $x_0 = 1$ to $\hat{x} = 0$ and $x_N = -1$ to $\hat{x} = L$.
 
-\subsection{Spatial Discretization of the McNabb-Foster System}
-% TODO: Replace d^2c_m/dx^2 with D_N^2 * c_m (vector of nodal values)
-% TODO: Semi-discrete ODE system: dc/dt = A*c + f(c,T(t))
-% TODO: Boundary condition incorporation via row replacement in D_N^2
-% TODO: Coupling between c_m and c_{t,i} equations at each collocation point
+\subsection{Differentiation matrices}
 
-\subsection{Time Integration}
-% TODO: Stiffness from Arrhenius kinetics requires implicit methods
-% TODO: BDF methods via scipy.integrate.solve_ivp (method='BDF')
-% TODO: Jacobian structure: block-diagonal + diffusion band
-% TODO: Adaptive time-stepping for temperature ramps and BC transitions
+The key object in Chebyshev collocation is the $(N+1)\times(N+1)$ differentiation matrix $D_N$, whose entries are defined so that the matrix-vector product $D_N \mathbf{u}$ gives the values of the derivative of the interpolating polynomial at the collocation points. Following Trefethen \cite{trefethen2000}, the entries of $D_N$ on the reference interval $[-1,1]$ are
+\begin{equation}\label{eq:diffmat}
+  (D_N)_{ij} =
+  \begin{cases}
+    \dfrac{c_i}{c_j}\,\dfrac{(-1)^{i+j}}{x_i - x_j}, & i \ne j, \\[8pt]
+    -\dfrac{x_j}{2(1 - x_j^2)}, & 1 \le i = j \le N-1, \\[8pt]
+    \dfrac{2N^2 + 1}{6}, & i = j = 0, \\[8pt]
+    -\dfrac{2N^2 + 1}{6}, & i = j = N,
+  \end{cases}
+\end{equation}
+where $c_0 = c_N = 2$ and $c_j = 1$ for $1 \le j \le N-1$. The second-derivative matrix is obtained by squaring: $D_N^{(2)} = D_N^2$. On the physical domain $[0,L]$, the chain rule introduces a scaling factor of $2/L$ per derivative, so the physical first- and second-derivative matrices are $(2/L)\,D_N$ and $(2/L)^2\,D_N^2$, respectively.
 
-\subsection{Convergence Properties}
-% TODO: Exponential (spectral) convergence for smooth solutions
-% TODO: Algebraic convergence for solutions with limited regularity
-% TODO: Comparison with FEM h-refinement (algebraic) rates
-% TODO: Effect of boundary layers on achievable accuracy vs. N
+If $u(x)$ is analytic in a Bernstein ellipse of semi-axis sum $\rho > 1$ in the complex plane, the interpolation error at CGL nodes satisfies $\|u - p_N\|_\infty = O(\rho^{-N})$, i.e., the error decreases geometrically in $N$ \cite{trefethen2000,boyd2001}. For $C^\infty$ functions that are not entire, convergence is superalgebraic, and for functions with finite Sobolev regularity $H^s$, it degrades to algebraic $O(N^{-s})$. In contrast, P1 finite elements converge at the fixed rate $O(h^2)$ regardless of solution smoothness.
+
+\subsection{Spatial discretization of the McNabb--Foster system}
+
+Let $\mathbf{c}_m = [c_m(x_0), \ldots, c_m(x_N)]^T$ denote the vector of mobile concentrations at the collocation points, and similarly $\mathbf{c}_{t,i}$ for each trapped species. Replacing the spatial derivatives in~\eqref{eq:mobile} with the differentiation matrix and evaluating the trapping kinetics pointwise yields the semi-discrete system
+\begin{align}
+  \frac{d\mathbf{c}_m}{dt}
+    &= D(T)\,D_N^{(2)}\,\mathbf{c}_m
+       + \mathbf{S}(t)
+       - \sum_i \frac{d\mathbf{c}_{t,i}}{dt},
+  \label{eq:semidisc-mobile} \\[4pt]
+  \frac{d\mathbf{c}_{t,i}}{dt}
+    &= \nu_{m,i}(T)\,\mathbf{c}_m \odot \bigl(n_i\,\mathbf{1} - \mathbf{c}_{t,i}\bigr)
+       - \nu_{r,i}(T)\,\mathbf{c}_{t,i},
+  \label{eq:semidisc-trapped}
+\end{align}
+where $\odot$ denotes the Hadamard (elementwise) product and $\mathbf{S}(t)$ is the source vector evaluated at the nodes. Dirichlet boundary conditions are incorporated by replacing the first and last rows of the diffusion equation with the prescribed values $c_m(x_0,t)$ and $c_m(x_N,t)$ --- the standard row-replacement technique for collocation methods \cite{trefethen2000}.
+
+\subsection{Time integration}\label{sec:time-integration}
+
+The stiffness introduced by the Arrhenius kinetics~\eqref{eq:arrhenius} requires an L-stable implicit time integrator. We use backward Euler (BE) as the default scheme, matching FESTIM's time integrator so that any difference in accuracy between the two solvers is attributable to the spatial discretization alone. Each BE step requires solving a nonlinear system $\mathbf{F}(\mathbf{y}^{n+1}) = \mathbf{0}$, where $\mathbf{y} = [\mathbf{c}_m; \mathbf{c}_{t,1}; \ldots; \mathbf{c}_{t,I}]$ stacks all unknowns. We solve this with a damped Newton iteration using the analytically assembled Jacobian $J = \partial\mathbf{F}/\partial\mathbf{y}$, which has a block structure: the mobile--mobile block contains the dense diffusion operator $D_N^{(2)}$, the mobile--trap and trap--mobile blocks carry the trapping coupling terms, and the trap--trap blocks are diagonal. The time step is controlled adaptively: a growth factor of $1.1$ is applied after successful steps, a cutback factor of $0.5$ after Newton failures, and milestone times (e.g., the start of the TDS ramp) force the step to land exactly at physically significant transitions.
+
+BE is first-order accurate in time ($O(\Delta t)$), so at a fixed step size cap the temporal error sets a floor below which refining the spatial discretization yields no further improvement. We measure this floor explicitly by comparing BE solutions at $\Delta t$ and $\Delta t/2$ at high spatial resolution. For the constant-temperature permeation problem at $\Delta t_{\max} = \SI{0.05}{\second}$, the BE floor is approximately $9.4\times 10^{-4}$ in relative $L^2$ norm. To demonstrate that the spectral spatial convergence continues below this floor, we also present results with a variable-order BDF integrator (orders 1--5) from SciPy \cite{virtanen2020}, which reduces the temporal floor by roughly a factor of five at comparable wall time.
+
+\subsection{Verification: constant-temperature permeation}\label{sec:verification}
+
+All benchmarks in this work are run in Python on a single core (Apple M-series), with NumPy/SciPy for the Chebyshev solver and FEniCSx for FESTIM. The Chebyshev implementation mirrors FESTIM's public API class-for-class, so the two solvers differ only in the spatial discretization. For FESTIM, we report the Newton-solve-only wall time (the accumulated cost of the Newton iterations across all backward Euler steps) rather than the total \texttt{run()} time, because profiling shows that roughly 60\% of FESTIM's per-step overhead is consumed by FFCx JIT cache directory scans during \texttt{SurfaceFlux} post-processing, which is independent of mesh resolution. Error is measured as the relative $L^2$ norm on a common observation time grid, $\|J_\text{test} - J_\text{ref}\|_2 / \|J_\text{ref}\|_2$.
+
+To verify the geometric convergence predicted by the theory above, we consider isothermal gas-driven permeation through a $L = \SI{3e-4}{\meter}$ foil at $T = \SI{500}{\kelvin}$ with an upstream pressure of $P = \SI{100}{\pascal}$ and no trapping. This problem admits a closed-form Fourier series solution for the downstream flux \cite{crank1975},
+\begin{equation}\label{eq:crank}
+  J(t) = \frac{\sqrt{P}\,D\,K_S}{L}
+         \left(1 + 2\sum_{n=1}^{\infty}(-1)^n
+         \exp\!\left(-\frac{n^2\pi^2 D\,t}{L^2}\right)\right),
+\end{equation}
+and so serves as an analytical verification benchmark where the spatial discretization error can be measured against truth directly. Both solvers use the same backward Euler controller with $\Delta t_{\max} = \SI{0.05}{\second}$ (2000 steps over $t \in [0, 100]$~s), so any difference in relative $L^2$ error above the temporal floor is purely spatial.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/permeation_error_decomposition.pdf}
+  \caption{Verification on constant-temperature permeation. Left (Panel A): spatial-only error isolated by measuring both methods against a high-resolution Chebyshev BE solve at the same $\Delta t$, so the shared temporal error cancels. Chebyshev converges geometrically; FESTIM P1, P2, and P3 follow slopes $-2$, $-3$, and $-4$ respectively. Right (Panel B): Richardson extrapolation in time drops the temporal floor by a factor of $\sim 5$.}
+  \label{fig:perm-decomp}
+\end{figure}
+
+To isolate the spatial discretization error from the temporal floor, Figure~\ref{fig:perm-decomp} (Panel A) replaces the analytical reference with a high-resolution Chebyshev BE solve at the same $\Delta t$. Since test and reference share the same time integrator, the temporal error cancels, revealing the pure spatial convergence of each method. The Chebyshev curve falls geometrically until it reaches a cross-solver noise floor at approximately $10^{-5}$, confirming the geometric convergence predicted by spectral approximation theory. FESTIM P1, P2, and P3 follow their expected algebraic slopes of $-2$, $-3$, and $-4$. Panel B shows that Richardson extrapolation in time ($u_\text{Rich} = 2u(\Delta t/2) - u(\Delta t)$) cancels the leading $O(\Delta t)$ backward Euler term, dropping the temporal floor to approximately $2\times 10^{-4}$. This observation is a central finding: backward Euler's first-order temporal error sets a floor that neither spatial method can penetrate, and any effort to improve accuracy beyond the $\sim 10^{-3}$ level must address the time integration regardless of the spatial discretization.

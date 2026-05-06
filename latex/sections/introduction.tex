@@ -1,20 +1,35 @@
-\section{Introduction}
+\section{Introduction}\label{sec:intro}
 
-\subsection{Motivation}
-% TODO: Hydrogen retention in fusion reactor materials (tungsten, EUROFER, etc.)
-% TODO: Importance of predictive modeling for ITER and DEMO tritium inventory
-% TODO: Experimental techniques: TDS and GDP as primary diagnostic tools
+Nuclear fusion has the potential to provide a virtually limitless supply of clean energy, and significant international effort is now directed toward realizing this goal through devices such as ITER and DEMO \cite{iter2018}. One of the central challenges in the design of these reactors is the management of tritium, the radioactive hydrogen isotope that fuels the deuterium-tritium reaction. Tritium retention in plasma-facing materials poses both a safety concern, because regulatory limits cap the in-vessel inventory, and a fuel-economy concern, because any tritium trapped inside the walls is unavailable for the plasma \cite{roth2009,skinner2008}. For this reason, the ability to accurately predict how hydrogen isotopes diffuse through, become trapped in, and are released from structural metals is a major part of the fusion materials research program \cite{causey2002}. However, much of the relevant material data for fusion-relevant metals is still poorly characterized, and the trapping energies, trap densities, and diffusion activation energies that govern hydrogen transport in tungsten and other candidate structural materials are the subject of active investigation \cite{fernandez2015,ogorodnikova2003}. This is why fast, accurate hydrogen transport codes are needed: not just to simulate known physics, but to serve as the forward model inside inverse problems that extract unknown material properties from experimental measurements.
 
-\subsection{Current Computational Approaches}
-% TODO: Overview of FESTIM and its FEniCS finite element backend
-% TODO: Typical mesh requirements and computational cost
-% TODO: Challenges: steep boundary layers, stiff Arrhenius kinetics, multi-stage experiments
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\textwidth]{../figs/ARC_labeled.png}
+  \caption{Cross-section of the ARC fusion reactor concept. The structural materials surrounding the FLiBe blanket (5) must withstand permeation and trapping of tritium bred during operation.}
+  \label{fig:arc}
+\end{figure}
 
-\subsection{Spectral Methods as an Alternative}
-% TODO: Brief overview of spectral methods for PDEs
-% TODO: Why Chebyshev (non-periodic domain, boundary clustering)
-% TODO: Prior applications to reaction-diffusion systems
+Two experimental techniques are the primary diagnostic tools for this extraction. Thermo-desorption spectroscopy (TDS) implants hydrogen into a sample at low temperature, then ramps the temperature and records the desorption flux as a function of time, and the shape of the resulting spectrum encodes the number, density, and binding energy of each trap population \cite{hodille2015}. Gas-driven permeation (GDP) applies a controlled hydrogen partial pressure to one face of a foil and measures the downstream flux that emerges on the opposite side, and repeating the experiment at several temperatures maps out the diffusivity and solubility Arrhenius coefficients \cite{frauenfelder1969}. In both cases, extracting material properties requires an inverse problem: a forward solver simulates the experiment for a candidate parameter set, and an optimization loop adjusts the parameters until the simulated and measured signals agree. The forward solver is therefore the computational bottleneck of the entire analysis pipeline, and its speed and accuracy directly determine the feasibility of parametric studies, uncertainty quantification, and large-scale fitting campaigns.
 
-\subsection{Contributions and Outline}
-% TODO: Summary of what this paper contributes
-% TODO: Paper organization (section-by-section)
+\begin{figure}[t]
+  \centering
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{../figs/TDS.png}
+    \caption{Thermo-desorption spectroscopy (TDS). A pre-loaded sample is heated on a linear ramp while a quadrupole mass spectrometer records the desorption flux. The shape of the resulting spectrum encodes trap densities and binding energies.}
+    \label{fig:schematic-tds}
+  \end{subfigure}
+  \hfill
+  \begin{subfigure}[t]{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{../figs/GDP_schematic.pdf}
+    \caption{Gas-driven permeation (GDP). Hydrogen gas is applied at controlled pressure to the upstream face of a foil, and the downstream flux is measured by a pressure gauge. Repeating at several temperatures maps out diffusivity and solubility.}
+    \label{fig:schematic-gdp}
+  \end{subfigure}
+  \caption{The two experimental techniques used to characterize hydrogen transport in metals.}
+  \label{fig:schematics}
+\end{figure}
+
+The current state-of-the-art tool for these simulations is FESTIM (Finite Element Simulation of Tritium in Materials) \cite{delaporte2024,dark2024,delaporte2019}, which discretizes the McNabb--Foster coupled diffusion-trapping equations \cite{mcnabb1963} using continuous Galerkin finite elements on the FEniCSx platform, with options for P1 (linear), P2 (quadratic), and P3 (cubic) spatial elements, and advances in time with an implicit backward Euler scheme. While FESTIM is accurate and flexible, its spatial discretization converges only algebraically under mesh refinement: $O(h^2)$ for P1, $O(h^3)$ for P2, and $O(h^4)$ for P3, where $h$ is the element size. In practice, this means that resolving the steep concentration gradients that appear near material surfaces and boundary condition transitions requires very fine meshes, particularly in GDP configurations where the diffusivity changes by orders of magnitude between temperature steps. Chebyshev spectral collocation methods, by contrast, offer a fundamentally different convergence rate \cite{trefethen2000,boyd2001,canuto2006}. For problems with smooth solutions, spectral methods achieve geometric (exponential) convergence, meaning that the error decreases as $O(\rho^{-N})$ for some $\rho > 1$ rather than as a polynomial power of $1/N$. Furthermore, Chebyshev--Gauss--Lobatto nodes naturally cluster near domain boundaries with a spacing that scales as $O(N^{-2})$ at the endpoints, which is precisely where the sharpest concentration gradients appear in hydrogen transport problems. This combination of rapid convergence and favorable node distribution is why I believe spectral collocation is a strong candidate for accelerating the forward solves that dominate the cost of TDS and GDP analysis pipelines.
+
+In this work, I develop a one-dimensional Chebyshev pseudospectral collocation solver for the McNabb--Foster equations and benchmark it against FESTIM on three representative problems: constant-temperature gas-driven permeation with an analytical reference solution, multi-temperature GDP where FESTIM's Newton solver diverges at deep temperature steps, and TDS with a Levenberg--Marquardt inverse problem. I demonstrate that the Chebyshev solver achieves geometric spatial convergence, delivers matched-accuracy solutions at a fraction of the wall time with speedups of $8$--$10\times$, and maintains Newton convergence in regimes where the finite element solver fails. The remainder of the paper is organized as follows: Section~\ref{sec:governing} presents the governing equations and boundary conditions, Section~\ref{sec:methods} develops the Chebyshev spectral collocation method and verifies its geometric convergence on a simple permeation benchmark, Section~\ref{sec:gdp} applies the solver to multi-temperature gas-driven permeation where FESTIM's Newton solver diverges, Section~\ref{sec:tds} addresses thermo-desorption spectroscopy with a multi-domain decomposition and a Levenberg--Marquardt inverse problem, and Section~\ref{sec:conclusion} summarizes the findings and discusses future directions.

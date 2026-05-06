@@ -1,0 +1,44 @@
+\section{Thermo-Desorption Spectroscopy}\label{sec:tds}
+
+\subsection{Configuration}\label{sec:tds-config}
+
+In the TDS experiment, a $L = \SI{20}{\micro\meter}$ tungsten foil is exposed to a Gaussian ion flux of $\SI{2.5e19}{H/m^2/s}$ centered at $x = \SI{4.5}{\nano\meter}$ with a standard deviation of $\sigma = \SI{2.5}{\nano\meter}$ for $t \in [0, 400]$~s at $T = \SI{300}{\kelvin}$. After a \SI{50}{\second} rest period, a linear temperature ramp begins at $t = \SI{450}{\second}$ with a heating rate of \SI{6}{\kelvin/\second}. The desorption flux is defined as the sum of the outward diffusive fluxes at both surfaces, $J(t) = -D(T)\,\partial c_m/\partial x\big|_{x=0} + D(T)\,\partial c_m/\partial x\big|_{x=L}$. The true trap parameters are $n_1 = 1.3\times 10^{-3}$, $n_2 = 4\times 10^{-4}$ (site fractions), $E_{p,1} = \SI{0.87}{\electronvolt}$, and $E_{p,2} = \SI{1.0}{\electronvolt}$. The tungsten has two McNabb--Foster traps.
+
+This problem is challenging for both methods because the Gaussian source has a full width at half maximum of approximately \SI{5.9}{\nano\meter}, which is four orders of magnitude smaller than the domain length. A plain Chebyshev--Gauss--Lobatto grid clusters nodes at both endpoints, but the source sits near only one end, so half the spectral budget is wasted. Uniform-cell FEM has the complementary problem: to place even ten cells inside the source FWHM would require on the order of $10^5$ cells across the full domain.
+
+\subsection{Multi-domain spectral elements}\label{sec:multidomain}
+
+The scale separation in the TDS problem motivates decomposing the domain into three subdomains aligned with the source-to-bulk geometry, using the same breakpoints that FESTIM's graded mesh employs: $[0, \SI{30}{\nano\meter}]$, $[\SI{30}{\nano\meter}, \SI{3}{\micro\meter}]$, and $[\SI{3}{\micro\meter}, L]$. Each subdomain carries its own CGL grid, and the global polynomial budget $N$ is split in a $2:3:2$ ratio between the blocks, matching the vertex-count proportions of the FESTIM graded mesh. Adjacent blocks share their interface node, so the global solution is $C^0$ continuous across the breakpoints. Flux continuity at the interfaces is enforced by replacing the interface rows in the assembled global system with the condition $D(T)\,\partial c_m/\partial x\big|_{\text{left}} = D(T)\,\partial c_m/\partial x\big|_{\text{right}}$, evaluated using the one-sided differentiation matrices of the two adjacent blocks. The resulting multi-domain scheme has a total of $N+1$ degrees of freedom and retains the geometric convergence of the single-domain method within each block.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.8\textwidth]{../figs/tds_mesh_source.pdf}
+  \caption{Multi-domain mesh strategy for TDS. The Gaussian source (grey fill, log-$x$ scale) has a FWHM of \SI{5.9}{\nano\meter} inside a \SI{20}{\micro\meter} domain. Chebyshev nodes ($N+1 = 49$, three blocks at 30~nm / 3~$\mu$m / $L$) and FESTIM graded vertices ($\sim$700 total) are shown.}
+  \label{fig:tds-mesh}
+\end{figure}
+
+\subsection{Forward convergence and inverse problem}\label{sec:tds-results}
+
+To handle the four-order-of-magnitude scale separation between the source width and the domain length, both solvers use the three-block decomposition shown in Figure~\ref{fig:tds-mesh}. The Chebyshev solver splits its polynomial budget $2:3:2$ across the blocks; FESTIM uses a graded mesh with approximately 200/300/200 vertices in the three regions at scale 1.0.
+
+Since no analytical solution exists, we construct a spectrally-converged reference at $N+1 = 193$. The self-consistency check between $N+1 = 193$ and $N+1 = 129$ yields a relative $L^2$ difference of $1.3\times 10^{-3}$, an order of magnitude below our $10^{-2}$ target, so the reference is treated as truth.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../figs/tds_convergence.pdf}
+  \caption{TDS forward convergence. Left: relative $L^2$ error vs.\ DOFs. Chebyshev converges geometrically; FESTIM P1 follows slope $\approx -2$. Right: wall time vs.\ error. At the $10^{-2}$ target, Chebyshev lands at $N+1 = 49$ (\SI{0.73}{\second}), FESTIM at scale 0.05 ($\sim$33 vertices, \SI{5.81}{\second} Newton-only) --- a per-call speedup of $\sim 8\times$.}
+  \label{fig:tds-conv}
+\end{figure}
+
+Figure~\ref{fig:tds-conv} shows the convergence study. The Chebyshev error decreases quickly from $9.9\times 10^{-1}$ at $N+1 = 9$ to $1.3\times 10^{-3}$ at $N+1 = 129$, but is quickly snuffed out by backward Euler eror. FESTIM P1 also converges fairly quickly to the backward Euler error but at a slower rate. At the $10^{-2}$ target, the smallest qualifying Chebyshev configuration is $N+1 = 49$ at \SI{0.73}{\second}, while the smallest qualifying FESTIM configuration is mesh scale 0.05 ($\sim$33 vertices) at \SI{5.81}{\second} Newton-only.
+
+For the inverse problem, we generate synthetic TDS data by evaluating the Chebyshev forward solver at $N+1 = 193$ and adding $2\%$ Gaussian noise, representative of realistic TDS measurement uncertainty. A Levenberg--Marquardt optimizer \cite{levenberg1944,marquardt1963} recovers the four trap parameters $(n_1, n_2, E_{p,1}, E_{p,2})$ from the noisy spectrum. Both methods use their matched-accuracy meshes: Chebyshev at $N+1 = 49$ and FESTIM at scale 0.05.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{../figs/tds_lm_trajectory.pdf}
+  \caption{LM convergence trajectory. Parameter error vs.\ cumulative forward-solve time. Both methods converge in 35 evaluations. Chebyshev completes in \SI{24}{\second}; FESTIM requires \SI{229}{\second} Newton-only --- a $9.5\times$ speedup.}
+  \label{fig:tds-lm}
+\end{figure}
+
+Figure~\ref{fig:tds-lm} plots the LM convergence trajectory: the relative parameter error $\|(\theta_k - \theta_\text{true})/\theta_\text{true}\|_2$ as a function of the cumulative forward-solve wall time. Both methods converge in 35 forward evaluations and recover the true parameters to within the noise floor, which is expected given that the $2\%$ measurement noise dominates the forward-model error at both matched-accuracy meshes. However, the Chebyshev curve sits consistently to the left of the FESTIM curve, reaching any given parameter accuracy with a smaller simulation budget. The cumulative simulation times are \SI{24.0}{\second} for Chebyshev (full wall) and \SI{229.1}{\second} for FESTIM (Newton-only), a $9.5\times$ speedup that compounds over the optimization loop. Because TDS analysis pipelines routinely run hundreds to thousands of such inversions for parametric studies, Bayesian uncertainty quantification, or fitting across sample databases, this per-loop speedup transfers directly into a proportional reduction in the total analysis wall time.

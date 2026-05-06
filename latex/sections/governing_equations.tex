@@ -1,30 +1,33 @@
-\section{Governing Equations}
+\section{Governing Equations}\label{sec:governing}
 
-\subsection{McNabb-Foster Model}
-% TODO: Present the coupled PDE system for mobile hydrogen c_m and trapped hydrogen c_{t,i}:
-%   dc_m/dt = D(T) * d^2 c_m / dx^2 + S(x,t) - sum_i [nu_m,i * c_m * (n_i - c_{t,i}) - nu_r,i * c_{t,i}]
-%   dc_{t,i}/dt = nu_m,i * c_m * (n_i - c_{t,i}) - nu_r,i * c_{t,i}
-% TODO: Define all variables: D diffusivity, S source term, nu_m trapping rate,
-%       nu_r detrapping rate, n_i trap density
+\subsection{McNabb--Foster model}
 
-\subsection{Arrhenius Temperature Dependence}
-% TODO: D(T) = D_0 exp(-E_D / k_B T)
-% TODO: Trapping rate: nu_m(T) = nu_m,0 exp(-E_m / k_B T)
-% TODO: Detrapping rate: nu_r(T) = nu_r,0 exp(-E_r / k_B T)
-% TODO: Discuss the stiffness introduced by exponential temperature sensitivity
+The McNabb--Foster equations \cite{mcnabb1963} describe the coupled transport of mobile and trapped hydrogen in a metal lattice. The mobile concentration $c_m(x,t)$ obeys a diffusion equation with source and trapping--detrapping coupling, while each trap population $c_{t,i}(x,t)$ evolves according to local kinetics:
+\begin{align}
+  \frac{\partial c_m}{\partial t}
+    &= \frac{\partial}{\partial x}\!\left(D(T)\,\frac{\partial c_m}{\partial x}\right)
+       + S(x,t)
+       - \sum_{i} \frac{\partial c_{t,i}}{\partial t},
+  \label{eq:mobile} \\[4pt]
+  \frac{\partial c_{t,i}}{\partial t}
+    &= \nu_{m,i}(T)\,c_m\bigl(n_i - c_{t,i}\bigr)
+       - \nu_{r,i}(T)\,c_{t,i}.
+  \label{eq:trapped}
+\end{align}
+Here $D(T)$ is the temperature-dependent diffusivity, $S(x,t)$ is a volumetric source term (e.g., ion implantation), $n_i$ is the density of trap sites of type $i$, and $\nu_{m,i}$ and $\nu_{r,i}$ are the trapping and detrapping rates, respectively. All temperature-dependent coefficients follow Arrhenius laws:
+\begin{equation}\label{eq:arrhenius}
+  D(T) = D_0\,e^{-E_D/k_B T}, \qquad
+  \nu_{m,i}(T) = \nu_{m,i}^0\,e^{-E_{m,i}/k_B T}, \qquad
+  \nu_{r,i}(T) = \nu_{r,i}^0\,e^{-E_{r,i}/k_B T},
+\end{equation}
+where $k_B$ is the Boltzmann constant and $E_D$, $E_{m,i}$, $E_{r,i}$ are the respective activation energies. The exponential dependence on temperature is what makes the system stiff: a modest change in $T$ can shift the diffusivity by orders of magnitude, producing steep boundary layers and rapid transients that challenge both spatial and temporal discretizations.
 
-\subsection{Boundary and Initial Conditions}
-% TODO: Dirichlet BCs (c_m = 0 for TDS, Sieverts' law for GDP)
-% TODO: Initial conditions for each experiment type
-% TODO: Temperature profiles: constant, linear ramp (TDS), step changes (GDP)
+\subsection{Boundary conditions}
 
-\subsection{TDS Configuration}
-% TODO: Three-stage experiment: implantation, resting, desorption
-% TODO: Source term (Gaussian implantation flux)
-% TODO: Temperature ramp during desorption phase
-% TODO: Derived quantity: desorption flux from surface
+Two types of boundary conditions appear in the experiments we consider. For TDS, both surfaces of the foil are held at zero mobile concentration ($c_m = 0$), representing a vacuum boundary from which hydrogen escapes freely. For GDP, the upstream surface satisfies Sieverts' law \cite{sieverts1929},
+\begin{equation}\label{eq:sieverts}
+  c_m\big|_{x=0} = K_S(T)\,\sqrt{P(t)},
+  \qquad K_S(T) = K_{S,0}\,e^{-E_{K_S}/k_B T},
+\end{equation}
+where $P(t)$ is the applied hydrogen partial pressure and $K_S$ is the Sieverts solubility, while the downstream surface is held at $c_m = 0$. In both cases, the trapped concentrations have no boundary conditions of their own; they are determined pointwise by the local ODE~\eqref{eq:trapped}.
 
-\subsection{Gas-Driven Permeation Configuration}
-% TODO: Upstream Sieverts' BC with pressure P, downstream c_m = 0
-% TODO: Multi-temperature protocol: 400C -> evacuate -> 500C -> evacuate -> 600C
-% TODO: Why divergence occurs: D(600C) >> D(400C), steep boundary layer at reintroduction
